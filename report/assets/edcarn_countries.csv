@@ -1,0 +1,200 @@
+country,code,iso3,who_region
+Afghanistan,M102,AFG,EMR
+Albania,E103,ALB,EUR
+Algeria,F104,DZA,AFR
+Andorra,E105,AND,EUR
+Angola,F106,AGO,AFR
+Antigua and Barbuda,A107,ATG,AMR
+Argentina,A108,ARG,AMR
+Armenia,E109,ARM,EUR
+Australia,W110,AUS,WPR
+Austria,E111,AUT,EUR
+Azerbaijan,E112,AZE,EUR
+Bahamas,A113,BHS,AMR
+Bahrain,M114,BHR,EMR
+Bangladesh,S115,BGD,SEAR
+Barbados,A116,BRB,AMR
+Belarus,E117,BLR,EUR
+Belgium,E118,BEL,EUR
+Belize,A119,BLZ,AMR
+Benin,F120,BEN,AFR
+Bhutan,S121,BTN,SEAR
+Bolivia (Plurinational State of),A122,BOL,AMR
+Bosnia and Herzegovina,E123,BIH,EUR
+Botswana,F124,BWA,AFR
+Brazil,A125,BRA,AMR
+Brunei Darussalam,W126,BRN,WPR
+Bulgaria,E127,BGR,EUR
+Burkina Faso,F128,BFA,AFR
+Burundi,F129,BDI,AFR
+Cabo Verde,F130,CPV,AFR
+Cambodia,W131,KHM,WPR
+Cameroon,F132,CMR,AFR
+Canada,A133,CAN,AMR
+Central African Republic,F134,CAF,AFR
+Chad,F135,TCD,AFR
+Chile,A136,CHL,AMR
+China,W137,CHN,WPR
+Colombia,A138,COL,AMR
+Comoros,F139,COM,AFR
+Congo,F140,COG,AFR
+Cook Islands,W141,COK,WPR
+Costa Rica,A142,CRI,AMR
+Côte d'Ivoire,F143,CIV,AFR
+Croatia,E144,HRV,EUR
+Cuba,A145,CUB,AMR
+Cyprus,E146,CYP,EUR
+Czechia,E147,CZE,EUR
+Democratic People's Republic of Korea,S148,PRK,SEAR
+Democratic Republic of the Congo,F149,COD,AFR
+Denmark,E150,DNK,EUR
+Djibouti,M151,DJI,EMR
+Dominica,A152,DMA,AMR
+Dominican Republic,A153,DOM,AMR
+Ecuador,A154,ECU,AMR
+Egypt,M155,EGY,EMR
+El Salvador,A156,SLV,AMR
+Equatorial Guinea,F157,GNQ,AFR
+Eritrea,F158,ERI,AFR
+Estonia,E159,EST,EUR
+Eswatini,F160,SWZ,AFR
+Ethiopia,F161,ETH,AFR
+Faroe Islands,E162,FRO,EUR
+Fiji,W163,FJI,WPR
+Finland,E164,FIN,EUR
+France,E165,FRA,EUR
+Gabon,F166,GAB,AFR
+Gambia,F167,GMB,AFR
+Georgia,E168,GEO,EUR
+Germany,E169,DEU,EUR
+Ghana,F170,GHA,AFR
+Greece,E171,GRC,EUR
+Grenada,A172,GRD,AMR
+Guatemala,A173,GTM,AMR
+Guinea,F174,GIN,AFR
+Guinea-Bissau,F175,GNB,AFR
+Guyana,A176,GUY,AMR
+Haiti,A177,HTI,AMR
+Honduras,A178,HND,AMR
+Hungary,E179,HUN,EUR
+Iceland,E180,ISL,EUR
+India,S181,IND,SEAR
+Indonesia,W182,IDN,WPR
+Iran (Islamic Republic of),M183,IRN,EMR
+Iraq,M184,IRQ,EMR
+Ireland,E185,IRL,EUR
+Israel,E186,ISR,EUR
+Italy,E187,ITA,EUR
+Jamaica,A188,JAM,AMR
+Japan,W189,JPN,WPR
+Jordan,M190,JOR,EMR
+Kazakhstan,E191,KAZ,EUR
+Kenya,F192,KEN,AFR
+Kiribati,W193,KIR,WPR
+Kuwait,M194,KWT,EMR
+Kyrgyzstan,E195,KGZ,EUR
+Lao People's Democratic Republic,W196,LAO,WPR
+Latvia,E197,LVA,EUR
+Lebanon,M198,LBN,EMR
+Lesotho,F199,LSO,AFR
+Liberia,F1100,LBR,AFR
+Libya,M1101,LBY,EMR
+Lithuania,E1102,LTU,EUR
+Luxembourg,E1103,LUX,EUR
+Madagascar,F1104,MDG,AFR
+Malawi,F1105,MWI,AFR
+Malaysia,W1106,MYS,WPR
+Maldives,S1107,MDV,SEAR
+Mali,F1108,MLI,AFR
+Malta,E1109,MLT,EUR
+Marshall Islands,W1110,MHL,WPR
+Mauritania,F1111,MRT,AFR
+Mauritius,F1112,MUS,AFR
+Mexico,A1113,MEX,AMR
+Micronesia (Federated States of),W1114,FSM,WPR
+Monaco,E1115,MCO,EUR
+Mongolia,W1116,MNG,WPR
+Montenegro,E1117,MNE,EUR
+Morocco,M1118,MAR,EMR
+Mozambique,F1119,MOZ,AFR
+Myanmar,S1120,MMR,SEAR
+Namibia,F1121,NAM,AFR
+Nauru,W1122,NRU,WPR
+Nepal,S1123,NPL,SEAR
+Netherlands (Kingdom of the),E1124,NLD,EUR
+New Zealand,W1125,NZL,WPR
+Nicaragua,A1126,NIC,AMR
+Niger,F1127,NER,AFR
+Nigeria,F1128,NGA,AFR
+Niue,W1129,NIU,WPR
+North Macedonia,E1130,MKD,EUR
+Norway,E1131,NOR,EUR
+"Occupied Palestinian territory, including east Jerusalem",M1132,PSE,EMR
+Oman,M1133,OMN,EMR
+Pakistan,M1134,PAK,EMR
+Palau,W1135,PLW,WPR
+Panama,A1136,PAN,AMR
+Papua New Guinea,W1137,PNG,WPR
+Paraguay,A1138,PRY,AMR
+Peru,A1139,PER,AMR
+Philippines,W1140,PHL,WPR
+Poland,E1141,POL,EUR
+Portugal,E1142,PRT,EUR
+Puerto Rico,A1143,PRI,AMR
+Qatar,M1144,QAT,EMR
+Republic of Korea,W1145,KOR,WPR
+Republic of Moldova,E1146,MDA,EUR
+Romania,E1147,ROU,EUR
+Russian Federation,E1148,RUS,EUR
+Rwanda,F1149,RWA,AFR
+Saint Kitts and Nevis,A1150,KNA,AMR
+Saint Lucia,A1151,LCA,AMR
+Saint Vincent and the Grenadines,A1152,VCT,AMR
+Samoa,W1153,WSM,WPR
+San Marino,E1154,SMR,EUR
+Sao Tome and Principe,F1155,STP,AFR
+Saudi Arabia,M1156,SAU,EMR
+Senegal,F1157,SEN,AFR
+Serbia,E1158,SRB,EUR
+Seychelles,F1159,SYC,AFR
+Sierra Leone,F1160,SLE,AFR
+Singapore,W1161,SGP,WPR
+Slovakia,E1162,SVK,EUR
+Slovenia,E1163,SVN,EUR
+Solomon Islands,W1164,SLB,WPR
+Somalia,M1165,SOM,EMR
+South Africa,F1166,ZAF,AFR
+South Sudan,F1167,SSD,AFR
+Spain,E1168,ESP,EUR
+Sri Lanka,S1169,LKA,SEAR
+Sudan,M1170,SDN,EMR
+Suriname,A1171,SUR,AMR
+Sweden,E1172,SWE,EUR
+Switzerland,E1173,CHE,EUR
+Syrian Arab Republic,M1174,SYR,EMR
+Tajikistan,E1175,TJK,EUR
+Thailand,S1176,THA,SEAR
+Timor-Leste,S1177,TLS,SEAR
+Togo,F1178,TGO,AFR
+Tokelau,W1179,TKL,WPR
+Tonga,W1180,TON,WPR
+Trinidad and Tobago,A1181,TTO,AMR
+Tunisia,M1182,TUN,EMR
+Türkiye,E1183,TUR,EUR
+Turkmenistan,E1184,TKM,EUR
+Tuvalu,W1185,TUV,WPR
+Uganda,F1186,UGA,AFR
+Ukraine,E1187,UKR,EUR
+United Arab Emirates,M1188,ARE,EMR
+United Kingdom of Great Britain and Northern Ireland,E1189,GBR,EUR
+United Republic of Tanzania,F1190,TZA,AFR
+United States of America,A1191,USA,AMR
+Uruguay,A1192,URY,AMR
+Uzbekistan,E1193,UZB,EUR
+Vanuatu,W1194,VUT,WPR
+Venezuela (Bolivarian Republic of),A1195,VEN,AMR
+Viet Nam,W1196,VNM,WPR
+Yemen,M1197,YEM,EMR
+Zambia,F1198,ZMB,AFR
+Zimbabwe,F1199,ZWE,AFR
+Taiwan,,TWN,

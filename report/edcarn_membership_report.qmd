@@ -1,0 +1,472 @@
+---
+title: "EDCARN membership confirmation"
+author: "Antoine Chaillon · WHO Clinical Management & Operations"
+format:
+  dashboard:
+    theme: [cosmo, edcarn.scss]
+    logo: assets/who-logo-white.png
+    nav-buttons:
+      - icon: envelope
+        href: mailto:chaillona@who.int
+        aria-label: Contact
+    orientation: rows
+    scrolling: true
+    embed-resources: true
+params:
+  data_dir: "data"            # folder holding the two exports from the dataform
+  participants_file: ""       # "" = newest tokens_*.csv in data_dir
+  results_file: ""            # "" = newest results-survey*.csv in data_dir
+  show_personal: true         # false = no names, e-mails or free text, and no Excel download
+  # Secretariat / test entries to leave out of every figure and of the Excel file
+  exclude_emails: ""          # e.g. "a@who.int; b@who.int" for secretariat / test entries
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+## TERMINAL
+# quarto render edcarn_membership_report.qmd
+#   -> edcarn_membership_report.html (dashboard, with the Excel file embedded for download)
+#   -> EDCARN_masterlist_reviewed_<date>.xlsx written next to it
+# quarto render edcarn_membership_report.qmd -P show_personal:false -o edcarn_membership_public.html
+#   -> aggregate figures only (no names, e-mails, free text or Excel)
+
+suppressPackageStartupMessages({
+  library(data.table); library(plotly); library(DT); library(htmltools); library(bslib); library(openxlsx)
+})
+
+WHO <- c(blue = "#009ADE", navy = "#00205C", sky = "#5BC2E7", green = "#80BC00",
+         orange = "#F26829", purple = "#A6228C", amber = "#F2A900", grey = "#8A94A6")
+REGION_NAMES <- c(AFR = "African", AMR = "Americas", SEAR = "South-East Asia",
+                  EUR = "European", EMR = "Eastern Mediterranean", WPR = "Western Pacific")
+STATUS <- c("Confirmed" = WHO[["navy"]], "Updated" = WHO[["blue"]], "Asked to be removed" = WHO[["orange"]],
+            "Started, not submitted" = WHO[["amber"]], "No reply yet" = "#D5DCE5")
+FILL_CHANGED <- "#FFE08A"; FILL_ADDED <- "#CDEBC0"
+
+blank <- function(x) is.na(x) | trimws(x) == ""
+clean <- function(x) { x <- gsub("\\s+", " ", trimws(as.character(x))); x[x == ""] <- NA; x }
+newest <- function(dir, pat) { f <- list.files(dir, pat, full.names = TRUE, ignore.case = TRUE); if (length(f)) f[which.max(file.mtime(f))] else NA }
+read_any <- function(f) {
+  first <- readLines(f, n = 1, encoding = "UTF-8", warn = FALSE)
+  sep <- if (lengths(regmatches(first, gregexpr(";", first))) > lengths(regmatches(first, gregexpr(",", first)))) ";" else ","
+  d <- fread(f, sep = sep, colClasses = "character", encoding = "UTF-8", na.strings = NULL, check.names = FALSE)
+  setnames(d, trimws(sub("^﻿", "", names(d)))); d
+}
+
+# ---- files --------------------------------------------------------------------
+pfile <- if (nzchar(params$participants_file)) params$participants_file else newest(params$data_dir, "^tokens_.*\\.csv$")
+rfile <- if (nzchar(params$results_file)) params$results_file else newest(params$data_dir, "^results.*\\.csv$")
+if (is.na(pfile)) stop("No participant export (tokens_*.csv) found in ", params$data_dir)
+if (is.na(rfile)) stop("No results export (results*.csv) found in ", params$data_dir)
+P <- read_any(pfile); R <- read_any(rfile)
+countries <- fread("assets/edcarn_countries.csv", encoding = "UTF-8", colClasses = "character")
+
+# ---- participants (the details we held) ----------------------------------------
+attr_col <- function(n) grep(paste0("^attribute_", n, "\\b"), names(P), value = TRUE)[1]
+pa <- function(n) { c <- attr_col(n); if (is.na(c)) rep(NA_character_, nrow(P)) else clean(P[[c]]) }
+orig <- data.table(token = P$token, first = clean(P$firstname), last = clean(P$lastname), email = clean(P$email),
+                   org = pa(1), spec = pa(2), country = pa(3), ccode = pa(4), sex = pa(5), langs = pa(6))
+excl <- tolower(trimws(strsplit(params$exclude_emails, "[,;[:space:]]+")[[1]])); excl <- excl[excl != ""]
+n_excluded <- sum(tolower(orig$email) %in% excl)
+orig <- orig[!tolower(email) %in% excl]
+
+# ---- results: find columns whether exported with question codes or question text -------
+col <- function(code, text) {
+  h <- names(R); k <- grep(code, h, perl = TRUE); if (!length(k)) k <- grep(text, h, perl = TRUE, ignore.case = TRUE)
+  if (length(k)) h[k[1]] else NA_character_
+}
+gr <- function(c) if (is.na(c)) rep(NA_character_, nrow(R)) else clean(R[[c]])
+C <- list(token = col("^token$", "^Access code$"), submit = col("^submitdate$", "^Date submitted$"),
+          member = col("^MEMBER$", "^Please choose one option"), first = col("^FIRSTNAME$", "^First name"),
+          last = col("^LASTNAME$", "^Family name"), email = col("^EMAIL$", "preferred email"),
+          org = col("^ORGANISATION$", "^Organisation \\(primary"), spec = col("^SPECIALIZATION$", "^Specialization / unit"),
+          country = col("^COUNTRY$", "^Country where you are currently based:$"),
+          country_oth = col("^COUNTRY(\\[other\\]|_other)$", "^Country where you are currently based: \\[Other\\]$"),
+          regionoth = col("^REGIONOTH$", "^WHO region in which"), sex = col("^SEX$", "^Sex"),
+          eur = col("^EUROSHARE$", "Regional Office for Europe"), why = col("^REMOVEWHY$", "sorry to see you go"))
+if (is.na(C$token) || is.na(C$member)) stop("Could not find the access code or the membership question in ", basename(rfile))
+LANGS <- c(EN = "English", FR = "French", ES = "Spanish", AR = "Arabic", ZH = "Chinese", RU = "Russian", PT = "Portuguese")
+lang_col <- function(code, name) col(paste0("^LANGUAGES[\\[_]", code, "\\]?$"), paste0("^Languages in which.*\\[", name, "\\]$"))
+yes <- function(x) !is.na(x) & toupper(substr(x, 1, 1)) == "Y"
+
+r <- data.table(token = gr(C$token), submitted = as.POSIXct(gr(C$submit), tz = "UTC", format = "%Y-%m-%d %H:%M:%S"),
+                member = gr(C$member), first = gr(C$first), last = gr(C$last), email = gr(C$email),
+                org = gr(C$org), spec = gr(C$spec), country = gr(C$country), country_oth = gr(C$country_oth),
+                regionoth = gr(C$regionoth), sex = gr(C$sex), eur = gr(C$eur), why = gr(C$why))
+L <- sapply(names(LANGS), function(k) yes(gr(lang_col(k, LANGS[[k]]))))
+if (is.null(dim(L))) L <- matrix(L, nrow = nrow(R), dimnames = list(NULL, names(LANGS)))
+lang_other <- gr(lang_col("other", "Other"))
+r[, langs := { v <- apply(L, 1, function(z) paste(LANGS[z], collapse = "; ")); v[v == ""] <- NA
+               ifelse(blank(lang_other), v, ifelse(is.na(v), lang_other, paste0(v, "; ", lang_other))) }]
+r[, choice := fcase(grepl("^A1$|correct", member), "Confirmed", grepl("^A2$|updat", member), "Updated",
+                    grepl("^A3$|remove", member), "Asked to be removed", default = NA_character_)]
+# code exports give country codes; text exports give names
+r[country %chin% countries$code, country := countries$country[match(country, countries$code)]]
+r[!is.na(country_oth), country := country_oth]
+r[, sex := fcase(sex %chin% c("F", "Female"), "Female", sex %chin% c("M", "Male"), "Male",
+                 sex %chin% c("O", "Other"), "Other", sex %chin% c("N", "Prefer not to say"), "Prefer not to say", default = NA_character_)]
+r[, eur := fcase(yes(eur), "Yes", !is.na(eur), "No", default = NA_character_)]
+
+r <- r[!is.na(token)]
+sub_r <- r[!is.na(submitted)][order(-submitted)][!duplicated(token)]          # latest submitted reply per person
+started <- r[is.na(submitted) & !is.na(choice) & !token %chin% sub_r$token][!duplicated(token)]
+
+# ---- merge and work out what changed ---------------------------------------------
+m <- merge(orig, sub_r, by = "token", all.x = TRUE, suffixes = c("_old", "_new"))
+m[, status := fcase(!is.na(choice), choice, token %chin% started$token, "Started, not submitted", default = "No reply yet")]
+m[token %chin% started$token, started_choice := started$choice[match(token, started$token)]]
+upd <- m$status == "Updated"
+fin <- function(f, take_blank = TRUE) {
+  o <- m[[paste0(f, "_old")]]; n <- m[[paste0(f, "_new")]]
+  out <- o
+  if (take_blank) out[upd] <- n[upd] else out[upd & !blank(n)] <- n[upd & !blank(n)]
+  out
+}
+FIELDS <- c(first = "First name", last = "Family name", email = "Email", org = "Organisation",
+            spec = "Specialization / unit", country = "Country", sex = "Sex", langs = "Working languages")
+for (f in c("first", "last", "email", "org", "spec")) m[, (f) := fin(f)]
+m[, sex := fin("sex", take_blank = FALSE)]
+m[, country := country_old]
+m[!is.na(country_new) & status %chin% c("Confirmed", "Updated"), country := country_new]
+m[, langs := langs_old]; m[status == "Updated" & !is.na(langs_new), langs := langs_new]
+m <- merge(m, countries[, .(country, iso3, who_region)], by = "country", all.x = TRUE, sort = FALSE)
+m[country == "Taiwan" | (is.na(who_region) & !is.na(regionoth)),
+  who_region := fcase(grepl("Western Pacific|^WPR$", regionoth), "WPR", grepl("South-East|^SEAR$", regionoth), "SEAR", grepl("European|^EUR$", regionoth), "EUR",
+                      grepl("Americas|^AMR$", regionoth), "AMR", grepl("Eastern Med|^EMR$", regionoth), "EMR", grepl("African|^AFR$", regionoth), "AFR",
+                      rep(TRUE, .N), who_region)]
+
+changes <- rbindlist(lapply(names(FIELDS), function(f) {
+  old <- m[[if (f %in% c("country", "langs")) paste0(f, "_old") else paste0(f, "_old")]]; new <- m[[f]]
+  same <- (blank(old) & blank(new)) | (!blank(old) & !blank(new) & old == new)
+  k <- which(!same & m$status %chin% c("Confirmed", "Updated"))
+  if (!length(k)) return(NULL)
+  data.table(token = m$token[k], field = FIELDS[[f]], previous = old[k], new = new[k],
+             kind = fifelse(blank(old[k]), "Added", fifelse(blank(new[k]), "Removed", "Changed")))
+}))
+if (is.null(changes) || !nrow(changes)) changes <- data.table(token = character(), field = character(), previous = character(), new = character(), kind = character())
+changes <- merge(changes, m[, .(token, first, last, email, status)], by = "token")
+changes[, field := factor(field, levels = FIELDS)]
+changes <- changes[order(tolower(last), tolower(first), field)]
+m[, n_changed := changes[, .N, by = token][m, on = "token", N]]; m[is.na(n_changed), n_changed := 0L]
+m[, fields_changed := changes[, .(f = paste(field, collapse = "; ")), by = token][m, on = "token", f]]
+m[, prev_values := changes[kind != "Added", .(f = paste0(field, ": ", fifelse(is.na(previous), "(blank)", previous), collapse = " | ")), by = token][m, on = "token", f]]
+m[, region := factor(who_region, levels = names(REGION_NAMES))]
+m <- m[order(tolower(last), tolower(first))]
+
+# ---- headline numbers -----------------------------------------------------------------
+n_inv <- nrow(m); n_rep <- sum(m$status %chin% c("Confirmed", "Updated", "Asked to be removed"))
+n_conf <- sum(m$status == "Confirmed"); n_upd <- sum(m$status == "Updated"); n_rem <- sum(m$status == "Asked to be removed")
+n_start <- sum(m$status == "Started, not submitted"); n_none <- sum(m$status == "No reply yet")
+n_upd_real <- sum(m$status == "Updated" & m$n_changed > 0)
+eur_elig <- m[status %chin% c("Confirmed", "Updated") & who_region == "EUR"]
+n_eur_yes <- sum(eur_elig$eur == "Yes", na.rm = TRUE)
+pct <- function(a, b) if (b == 0) "–" else paste0(round(100 * a / b), "%")
+last_reply <- max(sub_r$submitted, na.rm = TRUE)
+
+vb <- function(title, value, sub = NULL, icon = "people", cls = NULL)
+  value_box(title = title, value = value, showcase = tags$i(class = paste0("bi bi-", icon)),
+            showcase_layout = showcase_top_right(width = 0.25), if (!is.null(sub)) p(sub), class = cls)
+plt <- function(p) config(p, displaylogo = FALSE,
+  modeBarButtonsToRemove = c("lasso2d", "select2d", "autoScale2d", "zoomIn2d", "zoomOut2d", "pan2d", "zoom2d"))
+lay <- function(p, ..., margin = list(l = 10, r = 10, t = 10, b = 10))
+  layout(p, font = list(family = "Arial", color = "#1F2A44", size = 12),
+         paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", margin = margin, ...)
+donut <- function(labels, values, colors) {
+  k <- values > 0
+  plot_ly(labels = labels[k], values = values[k], type = "pie", hole = 0.55, sort = FALSE, direction = "clockwise",
+          marker = list(colors = colors[k], line = list(color = "#FFFFFF", width = 2)),
+          texttemplate = "%{percent:.0%}", textposition = "inside",
+          insidetextfont = list(color = ifelse(colors[k] %in% c("#D5DCE5", "#E3E9F0", "#AEB8C6", WHO[["amber"]], WHO[["green"]]), "#1F2A44", "#FFFFFF")),
+          hovertemplate = "%{label}: %{value} (%{percent})<extra></extra>") |>
+    lay(legend = list(orientation = "v", x = 1, y = 0.5), showlegend = TRUE) |> plt()
+}
+
+# ---- Excel workbook ---------------------------------------------------------------------
+xlsx_file <- paste0("EDCARN_masterlist_reviewed_", format(Sys.Date(), "%Y-%m-%d"), ".xlsx")
+if (params$show_personal) {
+  wb <- createWorkbook(creator = "WHO Clinical Management & Operations")
+  modifyBaseFont(wb, fontSize = 10, fontName = "Arial")
+  hs <- createStyle(fontColour = "#FFFFFF", fgFill = WHO[["navy"]], textDecoration = "bold", wrapText = TRUE, valign = "center")
+  st_chg <- createStyle(fgFill = FILL_CHANGED); st_add <- createStyle(fgFill = FILL_ADDED)
+  st_stat <- lapply(STATUS, function(c) createStyle(fontColour = if (c %in% c("#D5DCE5", WHO[["amber"]])) "#1F2A44" else "#FFFFFF", fgFill = c, textDecoration = "bold"))
+  put <- function(sheet, dt, widths) {
+    addWorksheet(wb, sheet, gridLines = FALSE)
+    writeData(wb, sheet, dt, headerStyle = hs, withFilter = TRUE)
+    freezePane(wb, sheet, firstRow = TRUE); setRowHeights(wb, sheet, 1, 30)
+    setColWidths(wb, sheet, seq_along(widths), widths)
+  }
+  # Read me
+  addWorksheet(wb, "Read me", gridLines = FALSE)
+  rm_txt <- c("EDCARN membership confirmation – reviewed master list",
+              paste("Replies up to", format(last_reply, "%d %b %Y %H:%M"), "UTC \u00b7 prepared by Antoine Chaillon (chaillona@who.int)"),
+              "",
+              paste0("Invited: ", n_inv, "   Replied: ", n_rep, " (", pct(n_rep, n_inv), ")   Confirmed: ", n_conf,
+                     "   Updated: ", n_upd, "   Asked to be removed: ", n_rem, "   No reply yet: ", n_none + n_start),
+              "",
+              "Masterlist: one row per invited member, showing the CURRENT details (members' corrections applied).",
+              "   Yellow cell = value changed by the member; the column 'Previous values' shows what we held before.",
+              "   Green cell = information the member added where we had none.",
+              "Changes: every edit, one line per field, with the previous and the new value.",
+              "WHO-Europe consent: members in the European Region who agreed to share their details (name, email, organisation, specialization, country).",
+              "Removal requests: members who asked to be removed from the database.",
+              "Not replied: members who have not submitted a reply (for reminders).",
+              "",
+              "Contains personal data. Store and share only in approved WHO locations.")
+  writeData(wb, "Read me", rm_txt, startCol = 1, startRow = 1)
+  addStyle(wb, "Read me", createStyle(fontSize = 14, textDecoration = "bold", fontColour = WHO[["navy"]]), rows = 1, cols = 1)
+  addStyle(wb, "Read me", st_chg, rows = 7, cols = 1, stack = TRUE); addStyle(wb, "Read me", st_add, rows = 8, cols = 1, stack = TRUE)
+  setColWidths(wb, "Read me", 1, 120)
+
+  ml <- m[, .(Status = status, `Date replied` = format(submitted, "%Y-%m-%d %H:%M"), `First name` = first, `Family name` = last,
+              Email = email, Organisation = org, `Specialization / unit` = spec, Country = country, `WHO region` = who_region,
+              Sex = sex, `Working languages` = langs, `Share with WHO/Europe` = eur, `Fields changed` = fields_changed,
+              `Previous values` = prev_values, `Reason for leaving` = why)]
+  put("Masterlist", ml, c(20, 16, 18, 20, 32, 40, 32, 22, 10, 10, 22, 14, 30, 50, 34))
+  colmap <- c("First name" = 3, "Family name" = 4, "Email" = 5, "Organisation" = 6, "Specialization / unit" = 7,
+              "Country" = 8, "Sex" = 10, "Working languages" = 11)
+  rowof <- setNames(seq_len(nrow(m)) + 1L, m$token)
+  for (i in seq_len(nrow(changes))) {
+    rr <- rowof[[changes$token[i]]]; cc <- colmap[[as.character(changes$field[i])]]
+    addStyle(wb, "Masterlist", if (changes$kind[i] == "Added") st_add else st_chg, rows = rr, cols = cc, stack = TRUE)
+  }
+  for (s in names(STATUS)) { k <- which(m$status == s) + 1L; if (length(k)) addStyle(wb, "Masterlist", st_stat[[s]], rows = k, cols = 1, stack = TRUE) }
+
+  put("Changes", changes[, .(`Family name` = last, `First name` = first, Email = email, Field = as.character(field),
+                             Change = kind, `Previous value` = previous, `New value` = new)], c(20, 18, 32, 20, 10, 40, 40))
+  if (nrow(changes)) {
+    addStyle(wb, "Changes", st_chg, rows = which(changes$kind != "Added") + 1L, cols = 7, stack = TRUE)
+    addStyle(wb, "Changes", st_add, rows = which(changes$kind == "Added") + 1L, cols = 7, stack = TRUE)
+  }
+  put("WHO-Europe consent", m[eur == "Yes" & status %chin% c("Confirmed", "Updated"),
+      .(`First name` = first, `Family name` = last, Email = email, Organisation = org, `Specialization / unit` = spec, Country = country)],
+      c(18, 20, 32, 40, 32, 22))
+  put("Removal requests", m[status == "Asked to be removed", .(`First name` = first, `Family name` = last, Email = email,
+      Organisation = org, Country = country, `Date replied` = format(submitted, "%Y-%m-%d %H:%M"), `Reason for leaving` = why)],
+      c(18, 20, 32, 40, 22, 16, 50))
+  put("Not replied", m[status %chin% c("No reply yet", "Started, not submitted"), .(Status = status, `First name` = first, `Family name` = last,
+      Email = email, Organisation = org, Country = country, `WHO region` = who_region)], c(22, 18, 20, 32, 40, 22, 10))
+  saveWorkbook(wb, xlsx_file, overwrite = TRUE)
+  # Some openxlsx builds link to drawing parts they never write; drop such links so Excel opens the file cleanly.
+  fix_xlsx <- function(f) {
+    tmp <- tempfile(); dir.create(tmp); utils::unzip(f, exdir = tmp)
+    rels <- list.files(tmp, "\\.rels$", recursive = TRUE, full.names = TRUE, all.files = TRUE)
+    changed <- FALSE
+    for (rf in rels) {
+      x <- paste(readLines(rf, warn = FALSE, encoding = "UTF-8"), collapse = "")
+      base <- dirname(dirname(rf))
+      for (rel in regmatches(x, gregexpr("<Relationship [^>]*/>", x))[[1]]) {
+        tg <- sub('.*Target="([^"]+)".*', "\\1", rel)
+        if (grepl("^https?:", tg) || grepl('TargetMode="External"', rel)) next
+        path <- if (startsWith(tg, "/")) file.path(tmp, sub("^/", "", tg)) else file.path(base, tg)
+        if (!file.exists(path)) { x <- sub(rel, "", x, fixed = TRUE); changed <- TRUE }
+      }
+      writeLines(x, rf, useBytes = TRUE)
+    }
+    if (changed) {
+      for (sh in list.files(file.path(tmp, "xl", "worksheets"), "\\.xml$", full.names = TRUE)) {
+        x <- paste(readLines(sh, warn = FALSE, encoding = "UTF-8"), collapse = "")
+        relf <- file.path(dirname(sh), "_rels", paste0(basename(sh), ".rels"))
+        ids <- if (file.exists(relf)) regmatches(readLines(relf, warn = FALSE), gregexpr('Id="[^"]+"', readLines(relf, warn = FALSE)))[[1]] else character()
+        ids <- sub('Id="([^"]+)"', "\\1", ids)
+        for (tag in regmatches(x, gregexpr('<drawing r:id="[^"]+"/>', x))[[1]])
+          if (!sub('.*r:id="([^"]+)".*', "\\1", tag) %in% ids) x <- sub(tag, "", x, fixed = TRUE)
+        writeLines(x, sh, useBytes = TRUE)
+      }
+      old <- setwd(tmp); on.exit(setwd(old))
+      files <- list.files(".", recursive = TRUE, all.files = TRUE, no.. = TRUE)
+      unlink(f); zip::zip(normalizePath(file.path(old, f), mustWork = FALSE), files, root = ".")
+    }
+  }
+  fix_xlsx(xlsx_file)
+}
+```
+
+# Overview
+
+## Row {height="auto"}
+
+```{r}
+layout_column_wrap(
+  width = "200px", fill = FALSE,
+  vb("Replied", n_rep, paste0("of ", n_inv, " invited · ", pct(n_rep, n_inv), " response"), "envelope-check"),
+  vb("Confirmed as is", n_conf, "details correct, staying", "check2-circle", "vb-navy"),
+  vb("Updated their details", n_upd, paste0(n_upd_real, " with at least one change"), "pencil-square", "vb-navy"),
+  vb("Asked to be removed", n_rem, pct(n_rem, n_rep), "person-dash", "vb-orange"),
+  vb("WHO/Europe: agreed to share", n_eur_yes, paste0("of ", nrow(eur_elig), " staying members in the European Region"), "share", "vb-green"),
+  vb("No reply yet", n_none + n_start, paste0(n_start, " opened the page but did not submit"), "hourglass-split", "vb-amber")
+)
+```
+
+## Row {height="auto"}
+
+```{r}
+dl_button <- if (params$show_personal) {
+  b64 <- jsonlite::base64_enc(readBin(xlsx_file, "raw", file.info(xlsx_file)$size))
+  div(style = "padding: 4px 2px 2px 2px;",
+    tags$a(class = "btn-download", download = xlsx_file,
+           href = paste0("data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,", b64),
+           tags$i(class = "bi bi-file-earmark-excel"), " Download the reviewed master list (Excel, all sheets)"),
+    span(class = "who-note", style = "margin-left: 12px;",
+         span(class = "legend-swatch", style = paste0("background:", FILL_CHANGED)), "changed by the member  ",
+         span(class = "legend-swatch", style = paste0("background:", FILL_ADDED)), "added by the member",
+         paste0(" · replies up to ", format(last_reply, "%d %b %Y %H:%M"), " UTC")))
+} else p(class = "who-note", "Aggregate view: names, e-mails, free text and the Excel file are not included.")
+dl_button
+```
+
+## Row {height=400}
+
+```{r}
+#| title: Replies so far
+st <- m[, .N, by = status][match(names(STATUS), status)][!is.na(status)]
+donut(st$status, st$N, unname(STATUS[st$status]))
+```
+
+```{r}
+#| title: Replies over time
+ts <- sub_r[token %chin% m$token & !is.na(submitted), .N, by = .(t = as.POSIXct(format(submitted, "%Y-%m-%d %H:00:00"), tz = "UTC"))][order(t)]
+ts[, cum := cumsum(N)]
+plot_ly(ts, x = ~t) |>
+  add_bars(y = ~N, name = "Per hour", marker = list(color = WHO[["sky"]]), hovertemplate = "%{x|%d %b %H:00}: %{y}<extra></extra>") |>
+  add_lines(y = ~cum, name = "Cumulative", yaxis = "y2", line = list(color = WHO[["navy"]], width = 3),
+            hovertemplate = "Total by %{x|%d %b %H:00}: %{y}<extra></extra>") |>
+  lay(xaxis = list(title = ""), yaxis = list(title = "Per hour", gridcolor = "#E3E9F0"),
+      yaxis2 = list(title = "Cumulative", overlaying = "y", side = "right", showgrid = FALSE, rangemode = "tozero"),
+      legend = list(orientation = "h", y = 1.12), margin = list(l = 10, r = 55, t = 30, b = 10)) |> plt()
+```
+
+## Row {height=380}
+
+```{r}
+#| title: What members changed (updated replies)
+fc <- changes[status == "Updated", .N, by = .(field, kind)]
+p <- plot_ly()
+for (k in c("Changed", "Added", "Removed")) {
+  t <- fc[kind == k]; if (!nrow(t)) next
+  p <- add_bars(p, data = t, x = ~N, y = ~field, name = k, orientation = "h",
+                marker = list(color = c(Changed = WHO[["blue"]], Added = WHO[["green"]], Removed = WHO[["grey"]])[[k]]),
+                hovertemplate = paste0(k, ": %{x}<extra>%{y}</extra>"))
+}
+p |> lay(barmode = "stack", xaxis = list(title = "Members", gridcolor = "#E3E9F0"),
+         yaxis = list(title = "", categoryorder = "array", categoryarray = rev(levels(changes$field))),
+         legend = list(orientation = "h", y = -0.15)) |> plt()
+```
+
+```{r}
+#| title: "WHO/Europe sharing (staying members in the European Region)"
+e <- eur_elig[, .N, by = .(a = fifelse(is.na(eur), "Not answered", eur))]
+e <- e[match(c("Yes", "No", "Not answered"), a)][!is.na(a)]
+donut(e$a, e$N, c(Yes = WHO[["green"]], No = WHO[["orange"]], "Not answered" = "#D5DCE5")[e$a])
+```
+
+# Geography
+
+## Row {height=560}
+
+```{r}
+#| title: Members by country (current details)
+mk <- function(sel) m[sel & !is.na(iso3), .N, by = .(iso3, country)]
+sets <- list(Invited = rep(TRUE, n_inv), Replied = m$status %chin% c("Confirmed", "Updated", "Asked to be removed"),
+             Staying = m$status %chin% c("Confirmed", "Updated"))
+zmax <- max(1, mk(sets$Invited)$N)
+p <- plot_ly()
+for (k in seq_along(sets)) {
+  t <- mk(sets[[k]])
+  p <- add_trace(p, type = "choropleth", locations = t$iso3, z = t$N, text = t$country, locationmode = "ISO-3",
+                 name = names(sets)[k], visible = k == 1, zmin = 0, zmax = zmax,
+                 colorscale = list(c(0, "#D6EEF9"), c(0.35, "#5BC2E7"), c(0.7, "#009ADE"), c(1, "#00205C")),
+                 marker = list(line = list(color = "#FFFFFF", width = 0.5)),
+                 colorbar = list(title = "Members", thickness = 12, len = 0.6), hovertemplate = "%{text}: %{z}<extra></extra>")
+}
+btns <- lapply(seq_along(sets), function(k) list(label = names(sets)[k], method = "restyle", args = list("visible", as.list(seq_along(sets) == k))))
+p |> lay(geo = list(projection = list(type = "natural earth"), showframe = FALSE, showcoastlines = FALSE, showland = TRUE,
+                    landcolor = "#ECEFF3", countrycolor = "#FFFFFF", showcountries = TRUE, bgcolor = "rgba(0,0,0,0)",
+                    lataxis = list(range = c(-58, 85))),
+         updatemenus = list(list(type = "buttons", direction = "right", x = 0, y = 1.07, xanchor = "left",
+                                 buttons = btns, bgcolor = "#FFFFFF", bordercolor = WHO[["blue"]])),
+         margin = list(l = 0, r = 0, t = 30, b = 0)) |> plt()
+```
+
+## Row {height=400}
+
+```{r}
+#| title: Response by WHO region
+rg <- m[, .(Invited = .N, Replied = sum(status %chin% c("Confirmed", "Updated", "Asked to be removed")),
+            Confirmed = sum(status == "Confirmed"), Updated = sum(status == "Updated"),
+            Removed = sum(status == "Asked to be removed")), by = .(r = region)]
+rg[, `WHO region` := fifelse(is.na(r), "Not known", paste0(REGION_NAMES[as.character(r)], " (", r, ")"))]
+rg[, `Response rate` := paste0(round(100 * Replied / Invited), "%")]
+setorder(rg, -Invited)
+datatable(rg[, .(`WHO region`, Invited, Replied, `Response rate`)], rownames = FALSE,
+          options = list(dom = "t", paging = FALSE, ordering = FALSE), class = "compact stripe") |>
+  formatStyle("Replied", background = styleColorBar(c(0, max(rg$Invited)), "#BFE6F7"),
+              backgroundSize = "95% 70%", backgroundRepeat = "no-repeat", backgroundPosition = "center")
+```
+
+```{r}
+#| title: Sex (staying members, current details)
+sx <- m[status %chin% c("Confirmed", "Updated"), .N, by = .(s = fifelse(is.na(sex), "Not on file", sex))]
+sx <- sx[match(c("Female", "Male", "Other", "Prefer not to say", "Not on file"), s)][!is.na(s)]
+donut(sx$s, sx$N, c(Female = WHO[["blue"]], Male = WHO[["navy"]], Other = WHO[["purple"]], "Prefer not to say" = "#AEB8C6", "Not on file" = "#E3E9F0")[sx$s])
+```
+
+```{r}
+#| title: Working languages (members who updated)
+lg <- r[token %chin% m$token & !is.na(submitted) & choice == "Updated"]
+lt <- data.table(lang = unname(LANGS), N = colSums(L[match(lg$token, r$token), , drop = FALSE]))
+lt <- rbind(lt, data.table(lang = "Other", N = sum(!blank(lang_other[match(lg$token, r$token)]))))[N > 0][order(N)]
+plot_ly(lt, x = ~N, y = ~factor(lang, levels = lang), type = "bar", orientation = "h", marker = list(color = WHO[["blue"]]),
+        text = ~N, textposition = "outside", cliponaxis = FALSE, hovertemplate = "%{y}: %{x}<extra></extra>") |>
+  lay(xaxis = list(title = "", gridcolor = "#E3E9F0", range = c(0, max(lt$N) * 1.15)), yaxis = list(title = "")) |> plt()
+```
+
+# Changes
+
+## Row {height=780}
+
+```{r}
+#| title: !expr paste0("All edits (", nrow(changes), " fields, ", uniqueN(changes$token), " members)", if (!params$show_personal) " — personal data hidden" else "")
+if (params$show_personal) {
+  ct <- changes[, .(`Family name` = last, `First name` = first, Field = as.character(field), Change = kind,
+                    `Previous value` = previous, `New value` = new)]
+  datatable(ct, rownames = FALSE, filter = "top", fillContainer = TRUE, class = "compact stripe hover", extensions = "Buttons",
+            options = list(dom = "Bfrtip", pageLength = 50, scrollY = "600px", scrollCollapse = TRUE,
+                           buttons = list(list(extend = "excel", text = "\u2b07 Excel", filename = paste0("EDCARN_changes_", format(Sys.Date(), "%Y-%m-%d")), title = ""),
+                                          list(extend = "csv", text = "\u2b07 CSV", filename = paste0("EDCARN_changes_", format(Sys.Date(), "%Y-%m-%d")))))) |>
+    formatStyle("New value", "Change", backgroundColor = styleEqual(c("Changed", "Added", "Removed"), c(FILL_CHANGED, FILL_ADDED, "#E3E9F0")))
+} else {
+  datatable(changes[, .(Members = uniqueN(token)), by = .(Field = as.character(field), Change = kind)], rownames = FALSE,
+            options = list(dom = "t", paging = FALSE), class = "compact stripe")
+}
+```
+
+# Master list
+
+## Row {height="auto"}
+
+```{r}
+dl_button
+```
+
+## Row {height=800}
+
+```{r}
+#| title: !expr paste0("Invited members (", n_inv, ") — current details", if (!params$show_personal) " — personal data hidden" else "")
+tb <- m[, .(Status = status, Replied = format(submitted, "%Y-%m-%d %H:%M"), `Family name` = last, `First name` = first, Email = email,
+            Organisation = org, `Specialization / unit` = spec, Country = country, `WHO region` = who_region, Sex = sex,
+            `Working languages` = langs, `WHO/Europe` = eur, `Fields changed` = fields_changed, `Reason for leaving` = why)]
+if (!params$show_personal) tb[, c("Family name", "First name", "Email", "Reason for leaving") := NULL]
+fname <- paste0("EDCARN_masterlist_", format(Sys.Date(), "%Y-%m-%d"))
+datatable(tb, rownames = FALSE, filter = "top", fillContainer = TRUE, class = "compact stripe hover nowrap", extensions = "Buttons",
+          options = list(dom = "Bfrtip", pageLength = 50, scrollX = TRUE, scrollY = "600px", scrollCollapse = TRUE,
+                         buttons = list(list(extend = "excel", text = "\u2b07 Excel (filtered rows)", filename = fname, title = ""),
+                                        list(extend = "csv", text = "\u2b07 CSV", filename = fname),
+                                        list(extend = "copy", text = "Copy")))) |>
+  formatStyle("Status", backgroundColor = styleEqual(names(STATUS), unname(STATUS)),
+              color = styleEqual(names(STATUS), c("#FFFFFF", "#FFFFFF", "#FFFFFF", "#1F2A44", "#1F2A44")), fontWeight = "bold")
+```
